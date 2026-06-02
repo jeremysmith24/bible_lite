@@ -75,12 +75,23 @@ struct VerseListView: View {
 
     var body: some View {
         List(verses) { verse in
-            VerseRow(verse: verse, highlightsManager: highlightsManager)
-                .contentShape(Rectangle())
-                .onLongPressGesture {
+            NavigationLink(destination: VerseStudyView(verse: verse, bookName: book.name)) {
+                VerseRow(verse: verse, highlightsManager: highlightsManager)
+            }
+            .contextMenu {
+                Button {
+                    selectedVerse = verse
+                    showColorPicker = true
+                } label: {
+                    Label("Highlight", systemImage: "highlighter")
+                }
+            }
+            .simultaneousGesture(
+                LongPressGesture().onEnded { _ in
                     selectedVerse = verse
                     showColorPicker = true
                 }
+            )
         }
         .listStyle(.plain)
         .navigationTitle("\(book.name) \(chapter)")
