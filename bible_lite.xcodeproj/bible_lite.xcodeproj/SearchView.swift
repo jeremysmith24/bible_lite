@@ -4,18 +4,25 @@ struct SearchView: View {
     @State private var query = ""
     @State private var results: [Verse] = []
     @State private var isSearching = false
+    @State private var referenceNavTarget: BibleReference?
+    @State private var navigateToReference = false
 
     private let db = DatabaseManager.shared
     private let books: [Int: Book]
+    private let allBooksList: [Book]
 
     init() {
-        // Build a bookId → Book lookup so results can show book names
         var map: [Int: Book] = [:]
-        for book in DatabaseManager.shared.allBooks() {
-            map[book.id] = book
-        }
+        let list = DatabaseManager.shared.allBooks()
+        for book in list { map[book.id] = book }
         books = map
+        allBooksList = list
     }
+
+    // Computed suggestion state
+    private var parsedReference: BibleReference? { BibleReferenceParser.parse(query) }
+    private var bookSuggestions: [String] { BibleReferenceParser.suggestions(for: query) }
+    private var showSuggestions: Bool { !query.isEmpty && (!bookSuggestions.isEmpty || parsedReference != nil) }
 
     var body: some View {
         NavigationStack {
@@ -25,24 +32,144 @@ struct SearchView: View {
                 } else if isSearching {
                     ProgressView("Searching…")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if results.isEmpty {
+                } else if results.isEmpty && !showSuggestions {
                     ContentUnavailableView.search(text: query)
                 } else {
-                    resultsList
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 0) {
+                            if showSuggestions { suggestionsSection }
+                            if !results.isEmpty { resultsSection }
+                        }
+                    }
                 }
             }
             .navigationTitle("Search")
-            .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always),
-                        prompt: "Search the Bible")
-            .onChange(of: query) { _, newValue in
-                performSearch(newValue)
+            .searchable(text: $query,
+                        placement: .navigationBarDrawer(displayMode: .always),
+                        prompt: "Search or type a reference (e.g. Jn 3:16)")
+            .onChange(of: query) { _, newValue in performSearch(newValue) }
+            // Hidden NavigationLink for programmatic navigation to a reference
+            .background {
+                NavigationLink(
+                    destination: referenceDestination(),
+                    isActive: $navigateToReference
+                ) { EmptyView() }
             }
         }
     }
 
-    // MARK: - Subviews
+    // MARK: - Suggestions section
 
-    private var emptyPrompt: some View {
+    private var suggestionsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Direct reference navigation row
+            if let ref = parsedReference {
+                Button {
+                    referenceNavTarget = ref
+                    navigateToReference = true
+                } label: {
+                    HStack {
+                        Image(systemName: "arrow.right.circle.fill")
+                            .foregroundStyle(Color.accentColor)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Go to \(ref.displayString)")
+                                .font(.subheadline.bold())
+                            Text(ref.verse != nil ? "Open verse" :
+                                 ref.chapter != nil ? "Open chapter" : "Open book")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 10)
+                    .background(Color(.secondarySystemBackground))
+                }
+                .buttonStyle(.plain)
+            }
+
+            // Book suggestion chips
+            if !bookSuggestions.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(bookSuggestions, id: \.self) { name in
+                            Button {
+                                query = name
+                            } label: {
+                                Text(name)
+                                    .font(.subheadline)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(Capsule().fill(Color.accentColor.opacity(0.12)))
+                                    .overlay(Capsule().stroke(Color.accentColor.opacity(0.3), lineWidth: 1))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+            }
+
+            if !results.isEmpty {
+                Divider().padding(.horizontal)
+            }
+        }
+        .padding(.top, 8)
+    }
+
+    // MARK: - Results section
+
+    private var resultsSection: some View {
+        LazyVStack(spacing: 0) {
+            ForEach(results) { verse in
+                NavigationLink(destination: VerseDetailView(
+                    verse: verse,
+                    bookName: books[verse.bookId]?.name ?? ""
+                )) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(referenceLabel(for: verse))
+                            .font(.caption.bold())
+                            .foregroundStyle(.secondary)
+                        Text(highlightedText(verse.text, query: query))
+                            .font(.body)
+                            .lineLimit(3)
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 10)
+                }
+                .buttonStyle(.plain)
+                Divider().padding(.horizontal)
+            }
+        }
+    }
+
+    // MARK: - Reference destination
+
+    @ViewBuilder
+    private func referenceDestination() -> some View {
+        if let ref = referenceNavTarget {
+            if let v = ref.verse, let ch = ref.chapter,
+               let verse = DatabaseManager.shared.verse(bookId: ref.bookId, chapter: ch, verse: v) {
+                VerseStudyView(verse: verse, bookName: ref.bookName)
+            } else if let ch = ref.chapter,
+                      let book = allBooksList.first(where: { $0.id == ref.bookId }) {
+                VerseListView(book: book, chapter: ch)
+            } else if let book = allBooksList.first(where: { $0.id == ref.bookId }) {
+                ChapterListView(book: book)
+            } else {
+                Text("Not found")
+            }
+        }
+    }
+}
+
+extension SearchView {
+    // MARK: - Empty prompt
+
+    var emptyPrompt: some View {
         VStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 48))
@@ -58,36 +185,9 @@ struct SearchView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private var resultsList: some View {
-        List(results) { verse in
-            NavigationLink(destination: VerseDetailView(verse: verse, bookName: books[verse.bookId]?.name ?? "")) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(referenceLabel(for: verse))
-                        .font(.caption.bold())
-                        .foregroundStyle(.secondary)
-                    Text(highlightedText(verse.text, query: query))
-                        .font(.body)
-                        .lineLimit(3)
-                }
-                .padding(.vertical, 2)
-            }
-        }
-        .listStyle(.plain)
-        .overlay(alignment: .bottomTrailing) {
-            if !results.isEmpty {
-                Text("\(results.count) result\(results.count == 1 ? "" : "s")")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(8)
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .padding()
-            }
-        }
-    }
-
     // MARK: - Helpers
 
-    private func referenceLabel(for verse: Verse) -> String {
+    func referenceLabel(for verse: Verse) -> String {
         let bookName = books[verse.bookId]?.name ?? "Book \(verse.bookId)"
         return "\(bookName) \(verse.chapter):\(verse.verse)"
     }
