@@ -49,7 +49,7 @@ struct SearchView: View {
                 .foregroundStyle(.secondary)
             Text("Search all 31,102 verses")
                 .font(.headline)
-            Text("Try "faith", "love one another", or "in the beginning"")
+            Text("Try \"faith\", \"love one another\", or \"in the beginning\"")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
