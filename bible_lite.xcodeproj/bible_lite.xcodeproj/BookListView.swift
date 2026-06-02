@@ -71,10 +71,7 @@ struct VerseListView: View {
     @StateObject private var highlightsManager = HighlightsManager.shared
     @State private var selectedVerse: Verse?
     @State private var showColorPicker = false
-
-    private var verses: [Verse] {
-        DatabaseManager.shared.verses(bookId: book.id, chapter: chapter)
-    }
+    @State private var verses: [Verse] = []
 
     var body: some View {
         List(verses) { verse in
@@ -87,6 +84,9 @@ struct VerseListView: View {
         }
         .listStyle(.plain)
         .navigationTitle("\(book.name) \(chapter)")
+        .task {
+            verses = DatabaseManager.shared.verses(bookId: book.id, chapter: chapter)
+        }
         .sheet(isPresented: $showColorPicker) {
             if let verse = selectedVerse {
                 HighlightPickerSheet(
