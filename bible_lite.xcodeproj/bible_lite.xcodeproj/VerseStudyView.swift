@@ -208,7 +208,7 @@ struct StrongsDetailSheet: View {
                             if let sid = word.strongsId {
                                 Label(sid, systemImage: "number")
                                     .font(.subheadline.monospaced())
-                                    .foregroundStyle(.accentColor)
+                                    .foregroundStyle(Color.accentColor)
                             }
                             if let grammar = word.grammar {
                                 Label(grammar, systemImage: "text.justify.left")

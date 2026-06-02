@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 // MARK: - Highlight Color
 
@@ -38,7 +39,6 @@ enum HighlightColor: String, CaseIterable, Identifiable {
 // MARK: - Highlights Manager
 
 /// Shared in-memory cache of all highlights so views react instantly to changes.
-@MainActor
 final class HighlightsManager: ObservableObject {
 
     static let shared = HighlightsManager()
