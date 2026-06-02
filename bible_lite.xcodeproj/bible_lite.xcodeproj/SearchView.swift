@@ -48,12 +48,8 @@ struct SearchView: View {
                         placement: .navigationBarDrawer(displayMode: .always),
                         prompt: "Search or type a reference (e.g. Jn 3:16)")
             .onChange(of: query) { _, newValue in performSearch(newValue) }
-            // Hidden NavigationLink for programmatic navigation to a reference
-            .background {
-                NavigationLink(
-                    destination: referenceDestination(),
-                    isActive: $navigateToReference
-                ) { EmptyView() }
+            .navigationDestination(isPresented: $navigateToReference) {
+                referenceDestination()
             }
         }
     }
@@ -215,8 +211,8 @@ extension SearchView {
         }
 
         isSearching = true
-        Task.detached(priority: .userInitiated) {
-            let found = DatabaseManager.shared.search(trimmed, limit: 100)
+        Task.detached(priority: .userInitiated) { [trimmed] in
+            let found = await Task { DatabaseManager.shared.search(trimmed, limit: 100) }.value
             await MainActor.run {
                 results = found
                 isSearching = false
